@@ -1,96 +1,129 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вход через Telegram</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            background: #f5f7fa;
-        }
-        .card {
-            background: white;
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            text-align: center;
-            max-width: 90%;
-            width: 350px;
-        }
-        h2 { color: #333; margin-bottom: 24px; }
-        #status { margin-top: 20px; min-height: 24px; }
-        .success { color: #4CAF50; }
-        .error { color: #f44336; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Авторизация (Telegram ID)</title>
+  <script src="https://unpkg.com/@sqlite.org/sqlite-wasm@3.45.1-1/sqlite-wasm/jswasm/sqlite3.mjs" type="module"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 40px; background: #f9f9f9; }
+    button {
+      padding: 12px 24px;
+      font-size: 18px;
+      background: #0088cc;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; }
+    #status { margin-top: 20px; min-height: 24px; }
+    .success { color: #2e7d32; }
+    .error { color: #c62828; }
+  </style>
 </head>
 <body>
+  <h2>Авторизация через Telegram</h2>
+  <p>Эта страница должна открываться <strong>из Telegram Web App</strong>.</p>
+  <button id="authBtn">Получить Telegram ID и создать БД</button>
+  <div id="status"></div>
 
-<div class="card">
-    <h2>Авторизация</h2>
-    <!-- Telegram Login Widget -->
-    <script 
-        async 
-        src="https://telegram.org/js/telegram-widget.js?22" 
-        data-telegram-login="8290560968:AAHUEueckfcUGDwBzJOxZ6RuMGD0xnWIv5o" 
-        data-size="large" 
-        data-auth-url="https://ivankedrovskij7-jpg.github.io/FillInTown/" 
-        data-request-access="write">
-    </script>
-    <div id="status"></div>
-</div>
+  <script type="module">
+    import sqlite3InitModule from 'https://unpkg.com/@sqlite.org/sqlite-wasm@3.45.1-1/sqlite-wasm/jswasm/sqlite3.mjs';
 
-<script>
-    // Telegram вызовет эту функцию после успешного входа
-    function onTelegramAuth(user) {
-        document.getElementById('status').innerHTML = 
-            `<span class="success">✅ Привет, ${user.first_name}!</span><br>
-             ID: ${user.id}<br>
-             Username: @${user.username || '—'}`;
-        
-        // Отправим данные в Supabase через fetch (без бэкенда!)
-        sendDataToSupabase(user);
-    }
+    let sqlite3;
+    let db;
 
-    async function sendDataToSupabase(user) {
-        const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
-        const SUPABASE_KEY = 'YOUR_ANON_KEY'; // anon, не service!
+    document.getElementById('authBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('authBtn');
+      const status = document.getElementById('status');
+      btn.disabled = true;
+      status.textContent = 'Инициализация...';
 
-        try {
-            const res = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
-                method: 'POST',
-                headers: {
-                    'apikey': SUPABASE_KEY,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'return=minimal'
-                },
-                body: JSON.stringify({
-                    telegram_id: user.id,
-                    first_name: user.first_name,
-                    last_name: user.last_name || null,
-                    username: user.username || null,
-                    auth_date: user.auth_date
-                })
-            });
-
-            if (res.ok) {
-                document.getElementById('status').innerHTML += `<br><span class="success">💾 Данные сохранены!</span>`;
-            } else {
-                throw new Error(await res.text());
-            }
-        } catch (e) {
-            console.error(e);
-            document.getElementById('status').innerHTML += 
-                `<br><span class="error">❌ Ошибка записи</span>`;
+      try {
+        // 1. Получаем настоящий Telegram ID (только внутри Telegram Web App!)
+        if (!window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+          throw new Error('❌ Эта страница должна открываться из Telegram!\n\nЗапустите через бота → кнопку Web App.');
         }
-    }
-</script>
 
+        const telegramId = Number(window.Telegram.WebApp.initDataUnsafe.user.id);
+        const firstName = window.Telegram.WebApp.initDataUnsafe.user.first_name || '—';
+
+        status.textContent = `Получен ID: ${telegramId}. Создаём БД...`;
+
+        // 2. Инициализируем SQLite в памяти
+        if (!sqlite3) {
+          sqlite3 = await sqlite3InitModule();
+        }
+
+        // Создаём in-memory БД
+        const capi = sqlite3.capi;
+        db = new capi.sqlite3.Struct.sqlite3();
+        const rc = capi.sqlite3_open_v2(
+          "file:auth.db?mode=memory",
+          db,
+          capi.SQLITE_OPEN_CREATE | capi.SQLITE_OPEN_READWRITE,
+          0
+        );
+        if (rc !== capi.SQLITE_OK) {
+          throw new Error("Не удалось создать БД в памяти");
+        }
+
+        // 3. Создаём таблицу
+        const createTable = `
+          CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            telegram_id INTEGER UNIQUE NOT NULL,
+            first_name TEXT,
+            created_at TEXT
+          );
+        `;
+        const stmt = capi.sqlite3_prepare_v2(db, createTable);
+        if (!stmt) throw new Error("Ошибка создания таблицы");
+        capi.sqlite3_step(stmt);
+        capi.sqlite3_finalize(stmt);
+
+        // 4. Вставляем пользователя
+        const insert = `
+          INSERT OR REPLACE INTO users (telegram_id, first_name, created_at)
+          VALUES (?, ?, datetime('now'));
+        `;
+        const insStmt = capi.sqlite3_prepare_v2(db, insert);
+        capi.sqlite3_bind_int(insStmt, 1, telegramId);
+        capi.sqlite3_bind_text(insStmt, 2, firstName, -1, capi.SQLITE_TRANSIENT);
+        const stepRc = capi.sqlite3_step(insStmt);
+        capi.sqlite3_finalize(insStmt);
+
+        if (stepRc !== capi.SQLITE_DONE) {
+          throw new Error("Ошибка вставки записи");
+        }
+
+        // 5. Экспортируем БД в .db-файл и скачиваем
+        const blob = await new Promise((resolve, reject) => {
+          const exporter = new sqlite3.oo1.DBExporter(db, {
+            output: 'blob'
+          });
+          exporter.export().then(resolve).catch(reject);
+        });
+
+        // Скачиваем файл
+        const url = URL.createObjectURL(new Blob([blob], { type: 'application/x-sqlite3' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `telegram_auth_${telegramId}.db`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        status.innerHTML = `<span class="success">✅ Успешно!<br>Telegram ID: <strong>${telegramId}</strong><br>Файл <code>telegram_auth_${telegramId}.db</code> скачан.</span>`;
+
+      } catch (err) {
+        status.innerHTML = `<span class="error">❌ Ошибка:<br>${err.message}</span>`;
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>
