@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="format-detection" content="telephone=no">
+    <title>Mini App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f9f9f9;
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        h2 {
+            font-size: 24px;
+            margin-bottom: 32px;
+            font-weight: 600;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 18px;
+            font-size: 18px;
+            font-weight: 600;
+            border: none;
+            border-radius: 14px;
+            margin: 12px 0;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn:active {
+            opacity: 0.85;
+        }
+
+        #step1 .btn {
+            background: #3399ff;
+            color: white;
+        }
+
+        #step2 .btn:nth-child(1) {
+            background: #4CAF50;
+            color: white;
+        }
+
+        #step2 .btn:nth-child(2) {
+            background: #FF9800;
+            color: white;
+        }
+
+        /* Скрытие ненужных этапов */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="step1">
+            <h2>Добро пожаловать!</h2>
+            <button class="btn" onclick="goToStep2()">Начать</button>
+        </div>
+
+        <div id="step2" class="hidden">
+            <h2>Выберите действие</h2>
+            <button class="btn" onclick="handleAction('btn1')">Кнопка 1</button>
+            <button class="btn" onclick="handleAction('btn2')">Кнопка 2</button>
+        </div>
+    </div>
+
+    <script>
+        function goToStep2() {
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+        }
+
+        function handleAction(id) {
+            // Для Telegram Mini App можно будет вызвать:
+            // Telegram.WebApp.sendData(JSON.stringify({ action: id }));
+            // А пока — просто покажем в alert/консоли:
+            console.log('Выбрано:', id);
+            alert(`Вы нажали: ${id === 'btn1' ? 'Кнопка 1' : 'Кнопка 2'}`);
+        }
+
+        // 🚀 Опционально: инициализация Telegram WebApp (если запущено внутри)
+        if (window.Telegram?.WebApp) {
+            const tg = window.Telegram.WebApp;
+            tg.ready(); // сообщает Telegram, что приложение загружено
+            tg.expand(); // разворачивает на весь экран (если встроено)
+            // Можно задать тему:
+            document.body.style.backgroundColor = tg.backgroundColor || '#ffffff';
+        }
+    </script>
+</body>
+</html>
